@@ -1,153 +1,5 @@
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <arpa/inet.h>
-#include <string.h>
-#include <pthread.h>
-
-#define PORT                    2024
-#define MAX_CONNECTION_REQUEST  10
-#define BUFFER_SIZE             1024
-#define MAX_NAME_LENGTH         32
-
-struct client_data_t {
-    int client_fd;
-    uint16_t client_port;
-    char client_ip[INET_ADDRSTRLEN];
-    char client_name[MAX_NAME_LENGTH];
-};
-
-struct client_node_t {
-    struct client_data_t data;
-    struct client_node_t* next;
-};
-
-struct chat_t {
-    pthread_mutex_t mutex;
-    struct client_node_t* head; 
-    int client_count;
-};
-
-struct pthread_data_t {
-    struct chat_t* chat;
-    struct client_data_t client_data;
-};
-
-enum commands{
-    CMD_QUIT,
-    CMD_LIST,
-    CMD_MESSAGE,
-};
-
-enum notify_type {
-    LEFT,
-    JOIN
-};
-
-struct chat_t* chat_init(void) {
-    struct chat_t* chat = malloc(sizeof(struct chat_t));
-
-    if (!chat) {
-        perror("chat_init: malloc");
-
-        exit(EXIT_FAILURE);
-    }
-
-    chat->head = NULL;
-    chat->client_count = 0;
-
-    pthread_mutex_init(&chat->mutex, NULL);
-
-    return chat;
-}
-
-void chat_free(struct chat_t* chat) {
-    pthread_mutex_lock(&chat->mutex);
-
-    struct client_node_t* current = chat->head;
-    struct client_node_t* next;
-
-    while(current) {
-        next = current->next;
-
-        close(current->data.client_fd);
-        
-        free(current);
-
-        current = next;
-    }
-
-    pthread_mutex_unlock(&chat->mutex);
-    pthread_mutex_destroy(&chat->mutex);
-
-    free(chat);
-}
-
-void client_add(struct chat_t* chat, struct client_data_t* c_data) {
-    pthread_mutex_lock(&chat->mutex);
-
-    struct client_node_t* new_node = malloc(sizeof(struct client_node_t));
-
-    if (!new_node) {
-        perror("client_add: malloc");
-
-        exit(EXIT_FAILURE);
-    }
-
-    new_node->data = *c_data;
-    new_node->next = chat->head;
-
-    chat->head = new_node;
-    chat->client_count++;
-
-    printf("Client added: %s:%d [fd: %d]\n",
-        c_data->client_ip,
-        c_data->client_port,
-        c_data->client_fd
-    );
-
-    pthread_mutex_unlock(&chat->mutex);
-}
-
-void client_remove(struct chat_t* chat, int client_fd) {
-    pthread_mutex_lock(&chat->mutex);
-
-    struct client_node_t* prev = NULL;
-    struct client_node_t* current = chat->head;
-
-    while (current) {
-
-        if (current->data.client_fd == client_fd) {
-
-            if (prev == NULL) {
-                chat->head = current->next;
-            } else {
-                prev->next = current->next;
-            }
-
-            printf("Removing client: %s:%d [fd: %d]\n",
-                current->data.client_ip,
-                current->data.client_port,
-                current->data.client_fd
-            );
-
-            close(current->data.client_fd);
-            
-            free(current);
-
-            chat->client_count--;
-
-            break;
-        }
-
-        prev = current;
-        current = current->next;
-    }
-
-    pthread_mutex_unlock(&chat->mutex);
-}
+#include "../headers/client_handler.h"
+#include "../headers/chat_room.h"
 
 ssize_t get_client_name(struct chat_t* chat, struct client_data_t* c_data) {
     ssize_t count_of_bytes = recv(c_data->client_fd, c_data->client_name, MAX_NAME_LENGTH - 1, 0);
@@ -360,13 +212,13 @@ void* client_handle(void* arg) {
     ssize_t count_of_bytes = get_client_name(chat, &c_data);
 
     if (count_of_bytes < 0) {
-        client_remove(chat, c_data.client_fd);
+        client_remove_from_chat(chat, c_data.client_fd);
 
         return NULL;
     }
 
     if (notify_all_clients(chat, c_data.client_fd, c_data.client_name, JOIN) < 0) {
-        client_remove(chat, c_data.client_fd);
+        client_remove_from_chat(chat, c_data.client_fd);
 
         return NULL;
     }
@@ -400,107 +252,12 @@ void* client_handle(void* arg) {
     }
 
     if (notify_all_clients(chat, c_data.client_fd, c_data.client_name, LEFT) < 0) {
-        client_remove(chat, c_data.client_fd);
+        client_remove_from_chat(chat, c_data.client_fd);
 
         return NULL;
     }
 
-    client_remove(chat, c_data.client_fd);
+    client_remove_from_chat(chat, c_data.client_fd);
 
     return NULL;
 }
-
-int main(void) {
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-
-    if (fd < 0) {
-        perror("socket");
-
-        return EXIT_FAILURE;
-    }
-
-    int opt = 1;
-
-    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-        perror("setsockopt");
-
-        close(fd);
-
-        return EXIT_FAILURE;
-    }
-
-    struct sockaddr_in addr = {
-        .sin_family = AF_INET,
-        .sin_port = htons(PORT),
-        .sin_addr.s_addr = INADDR_ANY
-    };
-
-    if (bind(fd, (struct sockaddr*) &addr, sizeof(addr)) < 0) {
-        perror("bind");
-
-        close(fd);
-
-        return EXIT_FAILURE;
-    }
-
-    if (listen(fd, MAX_CONNECTION_REQUEST) < 0) {
-        perror("listen");
-
-        close(fd);
-
-        return EXIT_FAILURE;
-    }
-
-    struct chat_t* chat = chat_init();
-    socklen_t client_len = (socklen_t) sizeof(struct sockaddr_in);
-
-    printf("Server is listening...\n");
-
-    while (1) {
-        struct client_data_t c_data = {0};
-        struct sockaddr_in client_addr = {0};
-
-        c_data.client_fd = accept(fd, (struct sockaddr*) &client_addr, &client_len);
-
-        if (c_data.client_fd < 0) {
-            perror("accept");
-
-            continue;
-        }
-
-        c_data.client_port = ntohs(client_addr.sin_port);
-
-        inet_ntop(AF_INET, &client_addr.sin_addr.s_addr, c_data.client_ip, INET_ADDRSTRLEN);
-
-        client_add(chat, &c_data);
-
-        struct pthread_data_t* pthread_data = malloc(sizeof(struct pthread_data_t));
-
-        if (!pthread_data) {
-            perror("main: malloc");
-
-            return EXIT_FAILURE;
-        }
-
-        pthread_data->chat = chat;
-        pthread_data->client_data = c_data;
-
-        pthread_t pthread;
-
-        if (pthread_create(&pthread, NULL, client_handle, pthread_data) != 0) {
-            perror("main: pthread_create");
-
-            break;
-        }
-        
-        pthread_detach(pthread);
-
-        printf("New connection: %s:%d\n", c_data.client_ip, c_data.client_port);
-    }
-
-    chat_free(chat);
-
-    close(fd);
-
-    return EXIT_SUCCESS;
-}   

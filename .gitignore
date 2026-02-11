@@ -1,2 +1,2 @@
-check_ip.c
-*.o
+obj/
+src_check_ip
