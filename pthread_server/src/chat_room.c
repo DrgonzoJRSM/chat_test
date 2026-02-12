@@ -6,7 +6,7 @@ struct chat_t* chat_init(void) {
     if (!chat) {
         perror("chat_init: malloc");
 
-        exit(EXIT_FAILURE);
+        return NULL;
     }
 
     chat->head = NULL;

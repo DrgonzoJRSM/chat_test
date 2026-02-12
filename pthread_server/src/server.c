@@ -79,7 +79,7 @@ int main(void) {
 
         pthread_t pthread;
 
-        if (pthread_create(&pthread, NULL, client_handle, pthread_data) != 0) {
+        if (pthread_create(&pthread, NULL, clients_handler, pthread_data) != 0) {
             perror("main: pthread_create");
 
             break;

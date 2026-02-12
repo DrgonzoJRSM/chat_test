@@ -30,7 +30,7 @@ void* recv_handle(void* arg) {
 
     char buffer[BUFFER_SIZE] = {0};
     ssize_t count_of_bytes = 0;
-    size_t len = 0;
+    size_t length = 0;
 
     while (atomic_load(&keep_working)) {
         count_of_bytes = recv(fd, buffer, BUFFER_SIZE - 1, 0);
@@ -50,11 +50,11 @@ void* recv_handle(void* arg) {
         }
 
         buffer[count_of_bytes] = '\0';
-        len = strlen(buffer);
+        length = strlen(buffer);
 
-        if (len > 0 && buffer[len - 1] == '\n') {
-            buffer[len - 1] = '\0';
-            len--;
+        if (length > 0 && buffer[length - 1] == '\n') {
+            buffer[length - 1] = '\0';
+            length--;
         }
 
         printf("\r\033[2K");
@@ -69,15 +69,9 @@ void* recv_handle(void* arg) {
     return NULL;
 }
 
-int send_name(int fd) {
-    char name[MAX_NAME_LENGTH] = {0};
-
-    print_time_prefix();
-    printf("Print your name:    ");
-        
-    fflush(stdout);
-
-    if (!fgets(name, MAX_NAME_LENGTH, stdin)) {
+int reading_input(char* buffer, size_t buffer_size, size_t* length) {
+    
+    if (!fgets(buffer, buffer_size, stdin)) {
         
         if (feof(stdin)) {
             printf("\n");
@@ -90,11 +84,29 @@ int send_name(int fd) {
         return -1;
     }
 
-    size_t length = strlen(name);
+    ssize_t len = strlen(buffer);
 
-    if (length > 0 && name[length - 1] == '\n') {
-        name[length - 1] = '\0';
-        length--;
+    if (len > 0 && buffer[len - 1] == '\n') {
+        buffer[len - 1] = '\0';
+        len--;
+    }
+
+    *length = len;
+
+    return 0;
+}
+
+int send_name(int fd) {
+    char name[MAX_NAME_LENGTH] = {0};
+    size_t length = 0;
+
+    print_time_prefix();
+    printf("Print your name:    ");
+        
+    fflush(stdout);
+
+    if (reading_input(name, MAX_NAME_LENGTH, &length) < 0) {
+        return -1;
     }
 
     ssize_t count_of_bytes = send(fd, name, length + 1, 0);
@@ -209,24 +221,8 @@ int main(int argc, char* argv[]) {
         
         fflush(stdout);
 
-        if (!fgets(buffer, BUFFER_SIZE, stdin)) {
-            
-            if (feof(stdin)) {
-                printf("\n");
-                print_time_prefix();
-                printf("EOF detected. Disconneting...\n");
-            } else {
-                perror("main: fgets");
-            }
-
+        if (reading_input(buffer, BUFFER_SIZE, &length) < 0) {
             break;
-        }
-
-        length = strlen(buffer);
-
-        if (length > 0 && buffer[length - 1] == '\n') {
-            buffer[length - 1] = '\0';
-            length--;
         }
 
         if (length == 0) {
@@ -260,3 +256,5 @@ int main(int argc, char* argv[]) {
 
     return EXIT_SUCCESS;
 }
+
+
