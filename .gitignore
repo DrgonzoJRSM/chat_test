@@ -1,2 +1,6 @@
 obj/
-src_check_ip
+check_ip
+
+ip_check
+client
+server
