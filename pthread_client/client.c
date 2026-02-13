@@ -7,7 +7,6 @@
 #include <string.h>
 #include <pthread.h>
 #include <stdatomic.h>
-#include <time.h>
 
 #define PORT                2024
 #define BUFFER_SIZE         1024
@@ -177,8 +176,8 @@ int main(int argc, char* argv[]) {
     }
 
     print_time_prefix();
-    printf("Connected to server! Type messages or '!quit' to exit or '!list' to get list of clients.\n");
-
+    printf("Connected to server! Enter your name or '!anonim' to remain anonymous\n");
+    
     ssize_t count_of_bytes = 0;
     size_t length = 0;
     char buffer[BUFFER_SIZE] = {0};
@@ -188,6 +187,9 @@ int main(int argc, char* argv[]) {
 
         return EXIT_FAILURE;
     }
+
+    print_time_prefix();
+    printf("Welcome to the server! Type messages or '!quit' to exit or '!list' to get list of clients.\n");
 
     pthread_t pthread = 0;
 

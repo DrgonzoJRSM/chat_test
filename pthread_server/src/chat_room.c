@@ -1,4 +1,5 @@
 #include "../headers/chat_room.h"
+#include "../headers/time_prefix.h"
 
 struct chat_t* chat_init(void) {
     struct chat_t* chat = malloc(sizeof(struct chat_t));
@@ -13,6 +14,9 @@ struct chat_t* chat_init(void) {
     chat->client_count = 0;
 
     pthread_mutex_init(&chat->mutex, NULL);
+
+    print_time_prefix();
+    printf("Chat has been initialized\n");
 
     return chat;
 }
@@ -37,9 +41,12 @@ void chat_free(struct chat_t* chat) {
     pthread_mutex_destroy(&chat->mutex);
 
     free(chat);
+
+    print_time_prefix();
+    printf("Chat has been free\n");
 }
 
-void client_add_to_chat(struct chat_t* chat, struct client_data_t* c_data) {
+int client_add_to_chat(struct chat_t* chat, struct client_data_t* c_data) {
     pthread_mutex_lock(&chat->mutex);
 
     struct client_node_t* new_node = malloc(sizeof(struct client_node_t));
@@ -47,7 +54,7 @@ void client_add_to_chat(struct chat_t* chat, struct client_data_t* c_data) {
     if (!new_node) {
         perror("client_add: malloc");
 
-        exit(EXIT_FAILURE);
+        return -1;
     }
 
     new_node->data = *c_data;
@@ -56,6 +63,7 @@ void client_add_to_chat(struct chat_t* chat, struct client_data_t* c_data) {
     chat->head = new_node;
     chat->client_count++;
 
+    print_time_prefix();
     printf("Client added: %s:%d [fd: %d]\n",
         c_data->client_ip,
         c_data->client_port,
@@ -63,6 +71,8 @@ void client_add_to_chat(struct chat_t* chat, struct client_data_t* c_data) {
     );
 
     pthread_mutex_unlock(&chat->mutex);
+
+    return 0;
 }
 
 void client_remove_from_chat(struct chat_t* chat, int client_fd) {
@@ -81,6 +91,8 @@ void client_remove_from_chat(struct chat_t* chat, int client_fd) {
                 prev->next = current->next;
             }
 
+            print_time_prefix();
+    
             printf("Removing client: %s:%d [fd: %d]\n",
                 current->data.client_ip,
                 current->data.client_port,

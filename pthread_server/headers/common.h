@@ -56,7 +56,7 @@ struct pthread_data_t {
 enum commands {
     CMD_QUIT,                               ///< Инициализация выхода из чата
     CMD_LIST,                               ///< Запрос списка клиентов
-    CMD_MESSAGE,                            ///< Отправка сообщения
+    CMD_MESSAGE                             ///< Отправка сообщения
 };
 
 /**
@@ -65,6 +65,30 @@ enum commands {
 enum notify_type {
     LEFT,                                   ///< Уведомление о покидании чата
     JOIN                                    ///< Уведомление о присоединениии к чату
+};
+
+/**
+ * @brief Псевдоним для callback функций 
+ * 
+ */
+typedef int (*client_callback) (struct client_node_t* client, void* arg);
+
+/**
+ * @brief Аргументы для callback функции broadcast_callback
+ * 
+ */
+struct broadcast_callback_data_t {
+    char* message;                          ///< Сообщение, которое нужно разослать всем клиентам
+    ssize_t length;                         ///< Длина сообщения
+};
+
+/**
+ * @brief Аргументы для callback функции client_list_callback
+ * 
+ */
+struct client_list_callback_data_t {
+    int* offset;                            ///< Указывает на позицию в строке, в которую нужно записать имя клиента
+    char* list_of_clients;                  ///< Строка для записи списка активных клиентов
 };
 
 #endif

@@ -1,6 +1,7 @@
 #include "../headers/common.h"
 #include "../headers/chat_room.h"
 #include "../headers/client_handler.h"
+#include "../headers/time_prefix.h"
 
 int main(void) {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -46,6 +47,7 @@ int main(void) {
     struct chat_t* chat = chat_init();
     socklen_t client_len = (socklen_t) sizeof(struct sockaddr_in);
 
+    print_time_prefix();
     printf("Server is listening...\n");
 
     while (1) {
@@ -63,8 +65,6 @@ int main(void) {
         c_data.client_port = ntohs(client_addr.sin_port);
 
         inet_ntop(AF_INET, &client_addr.sin_addr.s_addr, c_data.client_ip, INET_ADDRSTRLEN);
-
-        client_add_to_chat(chat, &c_data);
 
         struct pthread_data_t* pthread_data = malloc(sizeof(struct pthread_data_t));
 
@@ -87,6 +87,7 @@ int main(void) {
         
         pthread_detach(pthread);
 
+        print_time_prefix();
         printf("New connection: %s:%d\n", c_data.client_ip, c_data.client_port);
     }
 
