@@ -6,60 +6,40 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <pthread.h>
-#include <stdatomic.h>
 
 #define PORT                2024
 #define BUFFER_SIZE         1024
-#define MAX_NAME_LENGTH     32
-
-atomic_int keep_working = 1;
-
-void print_time_prefix(void) {
-    time_t mytime = time(NULL);
-    struct tm *now = localtime(&mytime);
-
-    printf("[%02d:%02d:%02d]    ", now->tm_hour, now->tm_min, now->tm_sec);
-}
+#define MAX_NAME_LENGHT     32
 
 void* recv_handle(void* arg) {
-    int* thread_fd = (int*) arg;
-    int fd = *thread_fd;
-
-    free(thread_fd);
-
+    int* fd = (int*) arg;
     char buffer[BUFFER_SIZE] = {0};
     ssize_t count_of_bytes = 0;
-    size_t length = 0;
+    size_t len = 0;
 
-    while (atomic_load(&keep_working)) {
-        count_of_bytes = recv(fd, buffer, BUFFER_SIZE - 1, 0);
+    while (1) {
+        memset(buffer, 0, BUFFER_SIZE);
+
+        count_of_bytes = recv(*fd, buffer, BUFFER_SIZE - 1, 0);
 
         if (count_of_bytes <= 0) {
 
             if (count_of_bytes == 0) {
-                print_time_prefix();
-                printf("Server disconnected!\n");
+                printf("\nServer disconnected!\n");
             } else {
                 perror("recv_handle: recv");
             }
 
-            atomic_store(&keep_working, 0);
-
             break;
         }
 
-        buffer[count_of_bytes] = '\0';
-        length = strlen(buffer);
-
-        if (length > 0 && buffer[length - 1] == '\n') {
-            buffer[length - 1] = '\0';
-            length--;
+        len = strlen(buffer);
+        
+        if (len > 0 && buffer[len - 1] == '\n') {
+            buffer[len - 1] = '\0';
         }
-
-        printf("\r\033[2K");
-        print_time_prefix();
-        printf("%s\n", buffer);
-        print_time_prefix(); 
+        
+        printf("\r\33[2K%s\n", buffer); 
         printf("You:    ");
 
         fflush(stdout);
@@ -68,74 +48,56 @@ void* recv_handle(void* arg) {
     return NULL;
 }
 
-int reading_input(char* buffer, size_t buffer_size, size_t* length) {
-    
-    if (!fgets(buffer, buffer_size, stdin)) {
-        
-        if (feof(stdin)) {
-            printf("\n");
-            print_time_prefix();
-            printf("EOF detected. Disconneting...\n");
-        } else {
-            perror("main: fgets");
-        }
+void send_name(int fd) {
+    char name[MAX_NAME_LENGHT] = {0};
 
-        return -1;
-    }
-
-    ssize_t len = strlen(buffer);
-
-    if (len > 0 && buffer[len - 1] == '\n') {
-        buffer[len - 1] = '\0';
-        len--;
-    }
-
-    *length = len;
-
-    return 0;
-}
-
-int send_name(int fd) {
-    char name[MAX_NAME_LENGTH] = {0};
-    size_t length = 0;
-
-    print_time_prefix();
     printf("Print your name:    ");
         
     fflush(stdout);
 
-    if (reading_input(name, MAX_NAME_LENGTH, &length) < 0) {
-        return -1;
+    if (!fgets(name, MAX_NAME_LENGHT, stdin)) {
+        
+        if (feof(stdin)) {
+            printf("\nEOF detected. Disconneting...\n");
+        } else {
+            perror("main: fgets");
+        }
+
+        exit(EXIT_FAILURE);
     }
 
-    ssize_t count_of_bytes = send(fd, name, length + 1, 0);
+    size_t lenght = strlen(name);
+
+    if (lenght > 0 && name[lenght - 1] == '\n') {
+        name[lenght - 1] = '\0';
+        lenght--;
+    }
+
+    ssize_t count_of_bytes = send(fd, name, lenght + 1, 0);
 
     if (count_of_bytes <= 0) {
         perror("main: send");
 
-        return -1;
+        exit(EXIT_FAILURE);
     }
 
-    return 0;
 }
 
 int disconnecting_from_server(int fd, char* buffer) {
     
     if (strcmp(buffer, "!quit") == 0) {
-
-        print_time_prefix();
         printf("Disconnecting...\n");
 
-        ssize_t count_of_bytes = send(fd, "!quit", strlen("!quit"), 0);
+        ssize_t count_of_bytes = send(fd, "!quit", 5, 0);
 
         if (count_of_bytes <= 0) {
             perror("disconnecting_from_server: send");
         }
 
-        return 0;  
+        return 1;  
     }
 
-    return -1;
+    return 0;
 }
 
 int main(int argc, char* argv[]) {
@@ -175,67 +137,60 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    print_time_prefix();
-    printf("Connected to server! Enter your name or '!anonim' to remain anonymous\n");
-    
-    ssize_t count_of_bytes = 0;
-    size_t length = 0;
-    char buffer[BUFFER_SIZE] = {0};
-
-    if (send_name(fd) < 0) {
-        close(fd);
-
-        return EXIT_FAILURE;
-    }
-
-    print_time_prefix();
-    printf("Welcome to the server! Type messages or '!quit' to exit or '!list' to get list of clients.\n");
+    printf("Connected to server! Type messages or '!quit' to exit or '!list' to get list of clients.\n");
 
     pthread_t pthread = 0;
-
-    int* thread_fd = malloc(sizeof(int));
-
-    if (!thread_fd) {
-        perror("main: malloc");
-
-        close(fd);
-
-        return EXIT_FAILURE;
-    }
-
-    *thread_fd = fd;
     
-    if (pthread_create(&pthread, NULL, recv_handle, thread_fd) != 0) {
+    if (pthread_create(&pthread, NULL, recv_handle, &fd) != 0) {
         perror("main: pthread_create");
 
         close(fd);
 
-        free(thread_fd);
-
         return EXIT_FAILURE;
     }
 
-    while (atomic_load(&keep_working)) {
+    pthread_detach(pthread);
+
+    ssize_t count_of_bytes = 0;
+    size_t lenght = 0;
+    char buffer[BUFFER_SIZE] = {0};
+
+    send_name(fd);
+
+    while (1) {
         memset(buffer, 0, BUFFER_SIZE);
 
-        print_time_prefix();
         printf("You:    ");
         
         fflush(stdout);
 
-        if (reading_input(buffer, BUFFER_SIZE, &length) < 0) {
+        if (!fgets(buffer, BUFFER_SIZE, stdin)) {
+            
+            if (feof(stdin)) {
+                printf("\nEOF detected. Disconneting...\n");
+            } else {
+                perror("main: fgets");
+            }
+
             break;
         }
 
-        if (length == 0) {
+        lenght = strlen(buffer);
+
+        if (lenght > 0 && buffer[lenght - 1] == '\n') {
+            buffer[lenght - 1] = '\0';
+            lenght--;
+        }
+
+        if (lenght == 0) {
             continue;
         }
 
-        if (disconnecting_from_server(fd, buffer) == 0) {
+        if (disconnecting_from_server(fd, buffer)) {
             break;
         }
 
-        count_of_bytes = send(fd, buffer, length + 1, 0);
+        count_of_bytes = send(fd, buffer, lenght + 1, 0);
 
         if (count_of_bytes <= 0) {
             perror("main: send");
@@ -245,12 +200,7 @@ int main(int argc, char* argv[]) {
 
     }
 
-    print_time_prefix();
-    printf("Shutting down connection...\n");
-
-    atomic_store(&keep_working, 0);
-
-    pthread_join(pthread, NULL);
+    printf("Shutting down connection...\n ");
 
     shutdown(fd, SHUT_RDWR);
 
@@ -258,5 +208,3 @@ int main(int argc, char* argv[]) {
 
     return EXIT_SUCCESS;
 }
-
-

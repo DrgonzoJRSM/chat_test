@@ -1,6 +1,5 @@
-obj/
-check_ip
-
+obj
 ip_check
+ncurses_client
 client
 server
