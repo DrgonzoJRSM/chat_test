@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra
 LDFLAGS = -lpthread
-NCURSESFLAGS = -lncurses
+NCURSESFLAGS = -lncursesw
 
 SERVER_TARGET = server
 NCURSES_CLIENT_TARGET = ncurses_client
